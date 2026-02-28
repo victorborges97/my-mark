@@ -8,7 +8,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { loading, user } = useAuth();
 
   React.useEffect(() => {
-    if (!user) {
+    if (!user && loading === false) {
       router.replace("/");
     }
   }, [loading]);

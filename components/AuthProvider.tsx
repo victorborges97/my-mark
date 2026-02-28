@@ -8,12 +8,14 @@ type AuthContextValue = {
     user: User | null;
     loading: boolean;
     logout: () => Promise<void>;
+    setUser: (u: User | null) => void;
 };
 
 const AuthContext = createContext<AuthContextValue>({
     user: null,
     loading: true,
     logout: async () => { },
+    setUser: (u: User | null) => { },
 });
 
 export function useAuth() {
@@ -38,7 +40,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
                 if (res?.user) {
                     setUser(res.user);
                     changeUser(res.user);
-                    setLoading(false);
                 }
             } finally {
                 localStorage.removeItem("initRedirect");
@@ -83,15 +84,17 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
     const logout = async () => {
         await signOut(auth);
-        localStorage.removeItem("anonUser")
-        localStorage.removeItem("lastAuthProvider");
-        localStorage.removeItem("notes");
+        if (user && !user.isAnonymous) {
+            localStorage.removeItem("anonUser")
+            localStorage.removeItem("lastAuthProvider");
+            localStorage.removeItem("notes");
+        }
         setUser(null);
         setLoading(true);
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, logout }}>
+        <AuthContext.Provider value={{ user, loading, logout, setUser }}>
             {children}
         </AuthContext.Provider>
     );

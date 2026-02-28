@@ -106,9 +106,11 @@ export function AppSidebar() {
               </span>
             </Link>
           </Button>
-          <div className="px-1">
-            <span className="text-xs text-zinc-500">{smallIdentity}</span>
-          </div>
+          {user && (
+            <div className="px-1">
+              <span className="text-xs text-zinc-500">{smallIdentity}</span>
+            </div>
+          )}
           <Button
             variant="outline"
             onClick={async () => {

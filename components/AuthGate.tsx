@@ -1,9 +1,18 @@
 "use client";
 import { useAuth } from "@/components/AuthProvider";
+import { useRouter } from "next/navigation";
 import * as React from "react";
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
-  const { loading } = useAuth();
+  const router = useRouter();
+  const { loading, user } = useAuth();
+
+  React.useEffect(() => {
+    if (!user) {
+      router.replace("/");
+    }
+  }, [loading]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen w-screen">
@@ -17,5 +26,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+
   return <>{children}</>;
 }

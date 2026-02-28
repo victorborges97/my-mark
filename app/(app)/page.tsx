@@ -9,8 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 export default function AppHomePage() {
   const { user } = useAuth();
   const provider = useMemo(() => new GoogleAuthProvider(), []);
-  const isGoogle =
-    !!user && (user.providerData || []).some((p) => p?.providerId === "google.com");
+  const isGoogle = !!user;
   const [openInfo, setOpenInfo] = useState(false);
 
   useEffect(() => {

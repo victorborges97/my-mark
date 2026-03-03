@@ -11,18 +11,20 @@ service cloud.firestore {
 
     // Verifica se o usuário é o dono do recurso
     function isOwner(resourceData) {
-      return isSignedIn() && resourceData.ownerId == request.auth.uid;
+      return isSignedIn() && 'ownerId' in resourceData && resourceData.ownerId == request.auth.uid;
     }
 
     // Verifica se o usuário está na lista de permitidos
     function isAllowedUser(resourceData) {
       return isSignedIn() && 
-        (resourceData.allowedUsers is list && request.auth.uid in resourceData.allowedUsers);
+        'allowedUsers' in resourceData && 
+        resourceData.allowedUsers is list && 
+        request.auth.uid in resourceData.allowedUsers;
     }
 
     // Verifica se o recurso é público
     function isPublic(resourceData) {
-      return resourceData.public == true;
+      return 'public' in resourceData && resourceData.public == true;
     }
 
     // Verifica se um convite é válido para ser aceito pelo usuário atual

@@ -91,6 +91,32 @@ export function subscribeNotes(ownerId: string, cb: (notes: Note[]) => void) {
     });
 }
 
+export function subscribeSharedNotes(userId: string, cb: (notes: Note[]) => void) {
+    if (!userId) {
+        console.warn("subscribeSharedNotes chamado sem userId");
+        cb([]);
+        return () => { };
+    }
+    // Query requires an index: allowedUsers + updatedAt
+    const q = query(notesCol, where("allowedUsers", "array-contains", userId), orderBy("updatedAt", "desc"));
+    return onSnapshot(q, (snap) => {
+        const list: Note[] = snap.docs.map((d) => ({
+            id: d.id,
+            ownerId: (d.data() as any).ownerId || "",
+            title: (d.data() as any).title || "",
+            content: (d.data() as any).content || "",
+            public: (d.data() as any).public === true,
+            publishId: (d.data() as any).publishId || "",
+            allowedUsers: Array.isArray((d.data() as any).allowedUsers) ? (d.data() as any).allowedUsers : [],
+            updatedAt: (d.data() as any).updatedAt,
+            createdAt: (d.data() as any).createdAt,
+        }));
+        cb(list);
+    }, (err) => {
+        console.error("Erro ao buscar notas compartilhadas para user:", userId, err);
+    });
+}
+
 export async function updateNote(id: string, data: Partial<Pick<Note, "title" | "content" | "ownerId">>) {
     const ref = doc(db, "notes", id);
     // Usa setDoc com merge para criar o documento se não existir
@@ -125,10 +151,17 @@ export async function deleteNote(id: string) {
     await deleteDoc(ref);
 }
 
-export async function addAllowedUser(noteId: string, uid: string) {
+export async function addAllowedUser(noteId: string, uid: string, inviteId?: string) {
     const { setDoc, arrayUnion } = await import("firebase/firestore");
     const ref = doc(db, "notes", noteId);
-    await setDoc(ref, { allowedUsers: arrayUnion(uid), updatedAt: serverTimestamp() }, { merge: true });
+    const updateData: any = {
+        allowedUsers: arrayUnion(uid),
+        updatedAt: serverTimestamp(),
+    };
+    if (inviteId) {
+        updateData.acceptingInviteId = inviteId;
+    }
+    await setDoc(ref, updateData, { merge: true });
 }
 
 export async function removeAllowedUser(noteId: string, uid: string) {

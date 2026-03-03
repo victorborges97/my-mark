@@ -6,22 +6,44 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
-import { FileText, LogOut, Notebook, Plus, User } from "lucide-react";
+import { FileText, LogOut, Notebook, Plus, Share2, User } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export function AppSidebar() {
   const { logout, user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { setOpenMobile } = useSidebar();
   const { activeNoteId } = useApp();
-  const { notes, createNote, deleteNote } = useNotes();
+  const { notes, createNote, deleteNote, listType, setListType } = useNotes();
   const [openCreate, setOpenCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("Novo documento");
   const isGoogle = !!user && (user.providerData || []).some((p) => p?.providerId === "google.com");
   const smallIdentity = isGoogle ? (user?.displayName || user?.email || "") : "Logado como Anônimo";
+
+  // Sincroniza listType com searchParams
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "shared") {
+      setListType("shared");
+    } else {
+      setListType("my");
+    }
+  }, [searchParams, setListType]);
+
+  const handleTabChange = (type: "my" | "shared") => {
+    const params = new URLSearchParams(searchParams);
+    if (type === "shared") {
+      params.set("tab", "shared");
+    } else {
+      params.delete("tab");
+    }
+    router.push(`${pathname}?${params.toString()}`);
+  };
 
   const handleCreate = async () => {
     try {
@@ -46,6 +68,30 @@ export function AppSidebar() {
         <div className="flex gap-2 items-center p-2">
           <Notebook size={18} />
           <span className="text-md" style={{ fontFamily: "var(--font-outfit)" }}>Docszin</span>
+        </div>
+        <div className="px-2 pb-2">
+          <div className="grid grid-cols-2 gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
+            <button
+              onClick={() => handleTabChange("my")}
+              className={`flex items-center justify-center text-xs font-medium py-1.5 px-2 rounded-md transition-all ${listType === "my"
+                  ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                }`}
+            >
+              <User size={14} className="mr-1.5" />
+              Meus
+            </button>
+            <button
+              onClick={() => handleTabChange("shared")}
+              className={`flex items-center justify-center text-xs font-medium py-1.5 px-2 rounded-md transition-all ${listType === "shared"
+                  ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                }`}
+            >
+              <Share2 size={14} className="mr-1.5" />
+              Compartilhados
+            </button>
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent>

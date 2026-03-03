@@ -42,7 +42,7 @@ export async function acceptInvite(inviteId: string, uid: string) {
   const data = snap.data() as any
   const noteId = data.noteId as string
   console.log("update note ", noteId, " to accepted ", uid)
-  await addAllowedUser(noteId, uid)
+  await addAllowedUser(noteId, uid, inviteId)
   console.log("update invite ", inviteId, " to accepted ", uid)
   console.log({ status: "accepted", acceptedBy: uid })
   await updateDoc(ref, { status: "accepted", acceptedBy: uid })

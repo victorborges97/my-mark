@@ -2,14 +2,17 @@
 
 import { useAuth } from "@/components/AuthProvider";
 import { createLocalNote, deleteLocalNote, getLocalNote, linkLocalOwner, listLocalNotes, updateLocalNote } from "@/lib/local-notes";
-import { Note, createNote as remoteCreate, deleteNote as remoteDelete, getNote as remoteGet, subscribeNotes as remoteSubscribe, updateNote as remoteUpdate } from "@/lib/notes";
+import { Note, createNote as remoteCreate, deleteNote as remoteDelete, getNote as remoteGet, subscribeNotes as remoteSubscribe, subscribeSharedNotes as remoteSubscribeShared, updateNote as remoteUpdate } from "@/lib/notes";
 import * as React from "react";
 
 type Source = "local" | "remote";
+export type ListType = "my" | "shared";
 
 type NotesContextValue = {
   source: Source;
   notes: Note[];
+  listType: ListType;
+  setListType: (type: ListType) => void;
   getNote: (id: string) => Promise<Note | null>;
   createNote: (title?: string) => Promise<string>;
   updateNote: (id: string, data: Partial<Pick<Note, "title" | "content">>) => Promise<void>;
@@ -29,6 +32,7 @@ export function NotesProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const source = detectSource(user);
   const [notes, setNotes] = React.useState<Note[]>([]);
+  const [listType, setListType] = React.useState<ListType>("my");
   const ownerId = user?.uid || (typeof window !== "undefined" ? JSON.parse(localStorage.getItem("anonUser") || "{}")?.uid : undefined);
   const prevSourceRef = React.useRef<Source | null>(null);
   const prevOwnerRef = React.useRef<string | undefined>(undefined);
@@ -36,19 +40,28 @@ export function NotesProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     let unsub: null | (() => void) = null;
     if (source === "remote" && ownerId) {
-      unsub = remoteSubscribe(ownerId, (list) => setNotes(list));
+      if (listType === "shared") {
+        unsub = remoteSubscribeShared(ownerId, (list) => setNotes(list));
+      } else {
+        unsub = remoteSubscribe(ownerId, (list) => setNotes(list));
+      }
     } else if (ownerId) {
-      setNotes(listLocalNotes(ownerId) as Note[]);
-      const handler = () => setNotes(listLocalNotes(ownerId) as Note[]);
-      window.addEventListener("storage", handler);
-      return () => {
-        window.removeEventListener("storage", handler);
-      };
+      // Local storage doesn't support shared notes
+      if (listType === "shared") {
+        setNotes([]);
+      } else {
+        setNotes(listLocalNotes(ownerId) as Note[]);
+        const handler = () => setNotes(listLocalNotes(ownerId) as Note[]);
+        window.addEventListener("storage", handler);
+        return () => {
+          window.removeEventListener("storage", handler);
+        };
+      }
     }
     return () => {
       if (unsub) unsub();
     };
-  }, [source, ownerId]);
+  }, [source, ownerId, listType]);
 
   React.useEffect(() => {
     const prevSource = prevSourceRef.current;
@@ -120,7 +133,7 @@ export function NotesProvider({ children }: { children: React.ReactNode }) {
   }, [source, ownerId]);
 
   return (
-    <NotesContext.Provider value={{ source, notes, getNote, createNote, updateNote, deleteNote }}>
+    <NotesContext.Provider value={{ source, notes, listType, setListType, getNote, createNote, updateNote, deleteNote }}>
       {children}
     </NotesContext.Provider>
   );

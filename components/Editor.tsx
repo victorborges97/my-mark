@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { createInvite } from "@/lib/invites";
+import { createInvite, listInvitesForNote, reInvite, revokeInvite, type Invite } from "@/lib/invites";
 import { createPublish, removePublish, subscribeNote } from "@/lib/notes";
-import { Download, Globe, LoaderCircle, MoreVertical, Share } from "lucide-react";
+import { Copy, Download, Globe, LoaderCircle, MoreVertical, RotateCcw, Share, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -28,6 +28,9 @@ export default function Editor({ noteId }: { noteId: string }) {
     const [openPublish, setOpenPublish] = useState(false);
     const [publishId, setPublishId] = useState<string | null>(null);
     const [isPublished, setIsPublished] = useState<boolean>(false);
+    const [invites, setInvites] = useState<Invite[]>([]);
+    const [loadingInvites, setLoadingInvites] = useState(false);
+    const [invitesError, setInvitesError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!noteId) return;
@@ -125,19 +128,80 @@ export default function Editor({ noteId }: { noteId: string }) {
     };
 
     const handleShare = async () => {
+        // Primeiro trata só a criação do convite (mensagem de sucesso/erro)
         try {
             if (!isGoogle || !noteId) return;
             if (!shareEmail.trim()) {
                 toast.error("Convite", { description: "Informe um email válido." });
                 return;
             }
-            const id = await createInvite(noteId, shareEmail.trim(), user!.uid);
-            setOpenShare(false);
+            const id = await createInvite(noteId, shareEmail.trim().toLowerCase(), user!.uid);
             setShareEmail("");
             toast.success("Convite criado", { description: `ID: ${id}` });
         } catch (e: any) {
             console.error(e);
             const msg = e?.code ? `Erro ao convidar (${e.code})` : "Erro ao convidar";
+            toast.error("Convite", { description: msg });
+            return;
+        }
+        // Depois atualiza a lista silenciosamente (sem gerar erro de UI)
+        try {
+            await loadInvites();
+        } catch (e) {
+            console.warn("Falha ao atualizar lista de convites", e);
+        }
+    };
+    const loadInvites = async () => {
+        if (!noteId || !user) return;
+        setLoadingInvites(true);
+        setInvitesError(null);
+        try {
+            const list = await listInvitesForNote(noteId, user.uid);
+            setInvites(list);
+        } catch (e: any) {
+            const msg = e?.code || e?.message || "Falha ao carregar convites";
+            setInvitesError(String(msg));
+        } finally {
+            setLoadingInvites(false);
+        }
+    };
+    useEffect(() => {
+        if (openShare && noteId) {
+            loadInvites();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [openShare, noteId]);
+    const handleCopyInvite = async (inviteId: string) => {
+        try {
+            await navigator.clipboard.writeText(`${location.origin}/invite/${inviteId}`);
+            toast.success("Link do convite copiado");
+        } catch { }
+    };
+    const handleReinvite = async (inviteId: string) => {
+        try {
+            if (!user) return;
+            const newId = await reInvite(inviteId, user.uid);
+            await loadInvites();
+            if (newId) {
+                try {
+                    await navigator.clipboard.writeText(`${location.origin}/invite/${newId}`);
+                    toast.success("Novo convite criado", { description: "Link copiado" });
+                } catch {
+                    toast.success("Novo convite criado");
+                }
+            }
+        } catch (e: any) {
+            const msg = e?.code ? `Erro ao reenviar (${e.code})` : "Erro ao reenviar";
+            toast.error("Convite", { description: msg });
+        }
+    };
+    const handleRevoke = async (inviteId: string) => {
+        try {
+            await revokeInvite(inviteId);
+            await loadInvites();
+            toast.success("Acesso removido");
+        } catch (e: any) {
+            const msg = e?.code ? `Erro ao remover acesso (${e.code})` : "Erro ao remover acesso";
             toast.error("Convite", { description: msg });
         }
     };
@@ -298,7 +362,51 @@ export default function Editor({ noteId }: { noteId: string }) {
                         <DialogTitle>Compartilhar nota</DialogTitle>
                         <DialogDescription>Informe o email do usuário que receberá o convite.</DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-2">
+                    <div className="grid gap-3">
+                        <div className="grid gap-2">
+                            {loadingInvites && (
+                                <div className="text-xs text-zinc-500">Carregando convites...</div>
+                            )}
+                            {!loadingInvites && invitesError && (
+                                <div className="flex items-center justify-between rounded border border-red-300 text-red-700 bg-red-50 px-3 py-2 text-xs">
+                                    <span>{invitesError === "permission-denied" ? "Sem permissão para listar convites. Verifique as regras (invites: allow list)." : `Falha ao carregar convites: ${invitesError}`}</span>
+                                    <Button size="sm" variant="outline" onClick={loadInvites}>Tentar novamente</Button>
+                                </div>
+                            )}
+                            {!loadingInvites && !invitesError && invites.length === 0 && (
+                                <div className="text-xs text-zinc-500">Nenhum convite ainda.</div>
+                            )}
+                            {!loadingInvites && !invitesError && invites.length > 0 && invites.map((inv) => (
+                                <div key={inv.id} className="flex items-center justify-between rounded border px-3 py-2">
+                                    <div>
+                                        <div className="text-sm font-medium">{inv.toEmail}</div>
+                                        <div className="text-xs text-zinc-500">
+                                            {inv.status === "accepted" ? "Aceito" : inv.status === "revoked" ? "Removido" : "Pendente"}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {inv.status === "pending" && (
+                                            <>
+                                                <Button aria-label="Reenviar" size="icon-sm" variant="outline" onClick={() => handleReinvite(inv.id)}>
+                                                    <RotateCcw size={14} />
+                                                </Button>
+                                                <Button aria-label="Copiar" size="icon-sm" variant="outline" onClick={() => handleCopyInvite(inv.id)}>
+                                                    <Copy size={14} />
+                                                </Button>
+                                                <Button aria-label="Remover" size="icon-sm" variant="outline" onClick={() => handleRevoke(inv.id)}>
+                                                    <Trash2 size={14} />
+                                                </Button>
+                                            </>
+                                        )}
+                                        {inv.status === "accepted" && (
+                                            <Button aria-label="Remover acesso" size="icon-sm" variant="outline" onClick={() => handleRevoke(inv.id)}>
+                                                <Trash2 size={14} />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                         <Input
                             placeholder="email@exemplo.com"
                             value={shareEmail}

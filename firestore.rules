@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Funções auxiliares de autenticação e permissão
+
+    // Verifica se o usuário está autenticado
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Verifica se o usuário é o dono do recurso
+    function isOwner(resourceData) {
+      return isSignedIn() && resourceData.ownerId == request.auth.uid;
+    }
+
+    // Verifica se o usuário está na lista de permitidos
+    function isAllowedUser(resourceData) {
+      return isSignedIn() && 
+        (resourceData.allowedUsers is list && request.auth.uid in resourceData.allowedUsers);
+    }
+
+    // Verifica se o recurso é público
+    function isPublic(resourceData) {
+      return resourceData.public == true;
+    }
+
+    // Verifica se um convite é válido para ser aceito pelo usuário atual
+    // Deve ser para a nota correta, estar pendente, e ser destinado ao email do usuário
+    function isValidInvite(noteId, inviteId) {
+      let invite = get(/databases/$(database)/documents/invites/$(inviteId));
+      return invite != null 
+        && invite.data.noteId == noteId
+        && invite.data.status == 'pending'
+        && request.auth.token.email != null
+        && invite.data.toEmail == request.auth.token.email;
+    }
+
+    // Verifica se a atualização da nota é apenas para aceitar um convite
+    // O usuário deve estar se adicionando à lista allowedUsers
+    // E fornecendo o ID do convite que está aceitando
+    function isAcceptingInvite(noteId) {
+      // O novo documento deve ter o acceptingInviteId
+      return request.resource.data.acceptingInviteId is string
+        // O convite deve ser válido
+        && isValidInvite(noteId, request.resource.data.acceptingInviteId)
+        // O usuário deve estar na lista final de allowedUsers
+        && request.resource.data.allowedUsers is list
+        && request.auth.uid in request.resource.data.allowedUsers
+        // Garante que apenas campos permitidos foram alterados/adicionados
+        // (allowedUsers, acceptingInviteId, updatedAt)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['allowedUsers', 'acceptingInviteId', 'updatedAt']);
+    }
+
+    // Regras para a coleção 'notes'
+    match /notes/{noteId} {
+      // Leitura: Dono OU Usuário Permitido OU Nota Pública
+      allow read: if isSignedIn() && (isOwner(resource.data) || isAllowedUser(resource.data) || isPublic(resource.data));
+
+      // Criação: Apenas autenticado, definindo-se como dono
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+
+      // Atualização: Dono OU Aceitando Convite
+      allow update: if isSignedIn() && (
+        isOwner(resource.data) 
+        || isAcceptingInvite(noteId)
+      );
+
+      // Deleção: Apenas dono
+      allow delete: if isOwner(resource.data);
+    }
+
+    // Regras para a coleção 'invites'
+    match /invites/{inviteId} {
+      // Leitura: Dono (quem enviou) OU Destinatário (quem recebeu)
+      // Nota: Para listagem, a query deve incluir filtro compatível (ex: where('ownerId', '==', uid))
+      allow read: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid
+        || (request.auth.token.email != null && resource.data.toEmail == request.auth.token.email)
+      );
+
+      // Criação: Apenas autenticado, deve ser o dono do convite E o dono da nota
+      allow create: if isSignedIn() 
+        && request.resource.data.ownerId == request.auth.uid
+        && get(/databases/$(database)/documents/notes/$(request.resource.data.noteId)).data.ownerId == request.auth.uid;
+
+      // Atualização:
+      allow update: if isSignedIn() && (
+        // Dono pode revogar (ou alterar qualquer coisa, mas na prática revoga)
+        (resource.data.ownerId == request.auth.uid)
+        ||
+        // Destinatário pode aceitar
+        (
+          request.auth.token.email != null
+          && resource.data.toEmail == request.auth.token.email
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.acceptedBy == request.auth.uid
+        )
+      );
+      
+      // Deleção: Apenas dono
+      allow delete: if resource.data.ownerId == request.auth.uid;
+    }
+    
+    // Regras para a coleção 'publishes' (Links públicos)
+    match /publishes/{publishId} {
+       // Qualquer um pode ler (público)
+       allow read: if true;
+       // Criação e Deleção apenas pelo dono
+       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+       allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}

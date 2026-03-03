@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { auth } from "@/lib/firebase";
 import { acceptInvite, getInvite } from "@/lib/invites";
-import { GoogleAuthProvider, linkWithPopup, signInWithPopup, signInWithRedirect, linkWithRedirect } from "firebase/auth";
+import { GoogleAuthProvider, linkWithPopup, linkWithRedirect, signInWithPopup, signInWithRedirect } from "firebase/auth";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import * as React from "react";
@@ -54,7 +54,7 @@ export default function InviteAcceptPage() {
               await signInWithPopup(auth, provider);
             } catch (err: any) {
               if (err?.code === "auth/popup-blocked") {
-                try { localStorage.setItem("initRedirect", "1"); } catch {}
+                try { localStorage.setItem("initRedirect", "1"); } catch { }
                 await signInWithRedirect(auth, provider);
                 return;
               }
@@ -65,7 +65,7 @@ export default function InviteAcceptPage() {
             return;
           } else {
             if (e?.code === "auth/popup-blocked") {
-              try { localStorage.setItem("initRedirect", "1"); } catch {}
+              try { localStorage.setItem("initRedirect", "1"); } catch { }
               await linkWithRedirect(user, provider);
               return;
             }
@@ -77,7 +77,7 @@ export default function InviteAcceptPage() {
           await signInWithPopup(auth, provider);
         } catch (e: any) {
           if (e?.code === "auth/popup-blocked") {
-            try { localStorage.setItem("initRedirect", "1"); } catch {}
+            try { localStorage.setItem("initRedirect", "1"); } catch { }
             await signInWithRedirect(auth, provider);
             return;
           }
@@ -90,8 +90,24 @@ export default function InviteAcceptPage() {
 
   const handleAccept = async () => {
     if (!user || !isGoogle || !inviteId) return;
-    await acceptInvite(inviteId, user.uid);
-    alert("Convite aceito. Você agora possui acesso a este documento.");
+    try {
+      await acceptInvite(inviteId, user.uid);
+      alert("Convite aceito. Você agora possui acesso a este documento.");
+    } catch (e: any) {
+      const code = e?.code || e?.message || "";
+      console.log({
+        code: e?.code,
+        message: e.message,
+        data: e?.data,
+        response: e?.response,
+        stack: e?.stack,
+      });
+      if (String(code).includes("permission-denied")) {
+        alert("Sem permissão para aceitar o convite. Peça ao proprietário para ajustar as regras do Firestore para permitir a aceitação de convites.");
+      } else {
+        alert(`Falha ao aceitar convite: ${code || "erro desconhecido"}`);
+      }
+    }
   };
 
   if (loading) {
@@ -119,6 +135,9 @@ export default function InviteAcceptPage() {
         <h1 className="text-lg font-semibold mb-2">Convite para acessar nota</h1>
         <p className="text-sm text-zinc-600">Nota: {invite.noteId}</p>
         <p className="text-sm text-zinc-600">Destinatário: {invite.toEmail}</p>
+        {user?.email && (
+          <p className="text-xs text-zinc-500 mt-1">Você está logado como: {user.email}</p>
+        )}
         <div className="mt-4 flex gap-2">
           <Button onClick={handleAccept} disabled={!isGoogle}>
             Aceitar convite

@@ -131,6 +131,12 @@ export async function addAllowedUser(noteId: string, uid: string) {
     await setDoc(ref, { allowedUsers: arrayUnion(uid), updatedAt: serverTimestamp() }, { merge: true });
 }
 
+export async function removeAllowedUser(noteId: string, uid: string) {
+    const { setDoc, arrayRemove } = await import("firebase/firestore");
+    const ref = doc(db, "notes", noteId);
+    await setDoc(ref, { allowedUsers: arrayRemove(uid), updatedAt: serverTimestamp() }, { merge: true });
+}
+
 export async function createPublish(noteId: string, ownerId: string) {
     const { setDoc } = await import("firebase/firestore");
     const pubRef = doc(collection(db, "publishes"));
